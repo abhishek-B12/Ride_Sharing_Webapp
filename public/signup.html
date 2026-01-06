@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sign Up - Ride Sharing Live</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <h2>Join Ride Sharing Live</h2>
+        <form id="signupForm">
+            <input type="text" id="fullname" placeholder="Full Name">
+            <input type="text" id="phone" placeholder="Phone Number">
+            <input type="password" id="password" placeholder="Password">
+            <select id="role">
+                <option value="rider">Rider</option>
+                <option value="driver">Driver</option>
+            </select>
+            <button type="submit">Sign Up</button>
+            <p id="errorMsg" class="error"></p>
+        </form>
+    </div>
+    <script src="js/auth.js"></script>
+</body>
+</html>
