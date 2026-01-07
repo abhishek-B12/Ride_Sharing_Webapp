@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard - Ride_Sharing_Live</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        #map { height: 70vh; width: 100%; border-radius: 12px; margin-top: 20px; }
+        .user-info { display: flex; justify-content: space-between; align-items: center; }
+    </style>
+</head>
+<body>
+    <div class="container container-wide">
+        <div class="user-info">
+            <h2><span id="userName">User</span>'s Dashboard</h2>
+            <div>
+                <label style="margin-right: 15px;">
+                    <input type="checkbox" id="driverToggle" onchange="toggleDriverMode()"> 
+                    Driver Mode
+                </label>
+                <button onclick="logout()" style="background: #dc3545;">Logout</button>
+            </div>
+        </div>
+        
+        <p id="status" style="font-weight: bold; color: #555;">Mode: Passenger</p>
+        
+        <div id="map"></div>
+        
+        <div id="passengerControls" style="margin-top: 20px;">
+            <button id="requestRide" style="background: #28a745;">Request a Ride</button>
+        </div>
+
+        <div id="driverControls" style="margin-top: 20px; display: none;">
+            <h3>Incoming Requests</h3>
+            <div id="requestList" style="border: 1px solid #ddd; padding: 10px; min-height: 50px;">
+                <p>No active requests...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // --- 1. SETUP ---
+        const user = JSON.parse(localStorage.getItem('user'));
+        if (!user) window.location.href = 'login.html';
+        document.getElementById('userName').innerText = user.name;
+
+        let isDriverMode = false;
+        let currentLat, currentLng;
+        let userMarker;
+        let rideMarkers = {}; // To track passenger locations on driver map
+
+        // Initialize Map
+        const map = L.map('map').setView([27.7172, 85.3240], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+        // --- 2. LOCATION ---
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition((position) => {
+                currentLat = position.coords.latitude;
+                currentLng = position.coords.longitude;
+                
+                if (!userMarker) {
+                    userMarker = L.marker([currentLat, currentLng]).addTo(map)
+                        .bindPopup("You").openPopup();
+                    map.setView([currentLat, currentLng], 15);
+                } else {
+                    userMarker.setLatLng([currentLat, currentLng]);
+                }
+            });
+        }
+
+        // --- 3. WEBSOCKET (REAL-TIME) ---
+        const socket = new WebSocket(`ws://${window.location.host}`);
+
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            console.log("WebSocket received:", data); // DEBUGGING LINE
+
+            // CASE A: New Ride Request (For Drivers)
+            if (data.type === 'NEW_RIDE_REQUEST' && isDriverMode) {
+                addRequestToList(data);
+                const pMarker = L.marker([data.lat, data.lng]).addTo(map)
+                    .bindPopup(`Passenger Waiting (Ride #${data.rideId})`).openPopup();
+                rideMarkers[data.rideId] = pMarker;
+            }
+
+            // CASE B: Ride Accepted (For Passengers)
+            // We use '==' to handle string vs number issues (e.g. "5" vs 5)
+            if (data.type === 'RIDE_ACCEPTED' && data.passengerId == user.id) {
+                console.log("Matched Passenger ID! Updating UI..."); // DEBUGGING LINE
+                document.getElementById('status').innerText = "Driver is coming!";
+                document.getElementById('status').style.color = "green";
+                document.getElementById('status').style.fontSize = "1.2rem"; // Make it big
+                alert("Your ride has been accepted!");
+            }
+        };
+
+        // --- 4. TOGGLE MODE ---
+        function toggleDriverMode() {
+            isDriverMode = document.getElementById('driverToggle').checked;
+            const pControls = document.getElementById('passengerControls');
+            const dControls = document.getElementById('driverControls');
+            const status = document.getElementById('status');
+
+            if (isDriverMode) {
+                pControls.style.display = 'none';
+                dControls.style.display = 'block';
+                status.innerText = "Mode: Driver (Waiting for requests...)";
+                status.style.color = "blue";
+            } else {
+                pControls.style.display = 'block';
+                dControls.style.display = 'none';
+                status.innerText = "Mode: Passenger";
+                status.style.color = "#555";
+            }
+        }
+
+        // --- 5. PASSENGER LOGIC ---
+        document.getElementById('requestRide').addEventListener('click', async () => {
+            if (!currentLat) return alert("Locating you...");
+            
+            const res = await fetch('/api/request-ride', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ passengerId: user.id, lat: currentLat, lng: currentLng })
+            });
+
+            if(res.ok) {
+                document.getElementById('status').innerText = "Searching for drivers...";
+                document.getElementById('status').style.color = "orange";
+            }
+        });
+
+        // --- 6. DRIVER LOGIC (Display Request) ---
+        function addRequestToList(data) {
+            const list = document.getElementById('requestList');
+            // Clear "No requests" text if it exists
+            if(list.innerText.includes("No active requests")) list.innerHTML = "";
+
+            const item = document.createElement('div');
+            item.className = 'ride-item';
+            item.style = "background: #f8f9fa; padding: 10px; margin-bottom: 5px; border-left: 4px solid #007bff;";
+            item.innerHTML = `
+                <strong>Ride #${data.rideId}</strong><br>
+                Location: ${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}<br>
+                <button onclick="acceptRide(${data.rideId}, ${data.passengerId})" style="margin-top:5px; padding:5px 10px; font-size:0.9rem;">Accept Ride</button>
+            `;
+            list.appendChild(item);
+        }
+
+        async function acceptRide(rideId, passengerId) {
+            const res = await fetch('/api/accept-ride', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ rideId, driverId: user.id, passengerId })
+            });
+            
+            if(res.ok) {
+                alert("Ride Accepted! Go pick them up.");
+                // Remove marker and list item (simplified)
+                document.getElementById('requestList').innerHTML = "No active requests...";
+                if(rideMarkers[rideId]) map.removeLayer(rideMarkers[rideId]);
+            }
+        }
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = 'login.html';
+        }
+    </script>
+</body>
+</html>

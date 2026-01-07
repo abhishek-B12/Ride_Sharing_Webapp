@@ -2,24 +2,93 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Sign Up - Ride Sharing Live</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Signup - Ride Live</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <div class="container">
-        <h2>Join Ride Sharing Live</h2>
+        <h2>Create Account</h2>
         <form id="signupForm">
-            <input type="text" id="fullname" placeholder="Full Name">
-            <input type="text" id="phone" placeholder="Phone Number">
-            <input type="password" id="password" placeholder="Password">
-            <select id="role">
-                <option value="rider">Rider</option>
-                <option value="driver">Driver</option>
-            </select>
-            <button type="submit">Sign Up</button>
-            <p id="errorMsg" class="error"></p>
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" id="fullName" placeholder="John Doe">
+                <small>Letters only</small>
+            </div>
+
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="username" placeholder="john_doe">
+                <small>No numbers allowed</small>
+            </div>
+
+            <div class="form-group">
+                <label>Phone Number</label>
+                <input type="text" id="phone" placeholder="98XXXXXXXX">
+            </div>
+
+            <div class="form-group">
+                <label>Email (Optional)</label>
+                <input type="email" id="email" placeholder="example@gmail.com">
+            </div>
+
+            <div class="form-group">
+                <label>Date of Birth</label>
+                <input type="date" id="dobAD">
+                <small>Must be 16+</small>
+            </div>
+
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="password">
+                <small>8+ chars, Upper, Lower, #, Symbol</small>
+            </div>
+
+            <button type="submit">Register</button>
         </form>
+        <p id="msg" class="message"></p>
+        <p>Already have an account? <a href="login.html">Login here</a></p>
     </div>
-    <script src="js/auth.js"></script>
+
+    <script>
+        document.getElementById('signupForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const msg = document.getElementById('msg');
+            msg.className = 'message';
+            msg.innerText = 'Processing...';
+
+            const formData = {
+                fullName: document.getElementById('fullName').value,
+                username: document.getElementById('username').value,
+                phone: document.getElementById('phone').value,
+                email: document.getElementById('email').value,
+                dobAD: document.getElementById('dobAD').value,
+                password: document.getElementById('password').value
+            };
+
+            try {
+                // Ensure this URL matches your backend port
+                const res = await fetch('http://localhost:3000/api/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
+
+                const data = await res.json();
+                
+                if (res.ok) {
+                    msg.classList.add('success');
+                    msg.innerText = data.message;
+                    setTimeout(() => window.location.href = 'login.html', 2000);
+                } else {
+                    msg.classList.add('error');
+                    msg.innerText = data.error;
+                }
+            } catch (err) {
+                msg.classList.add('error');
+                msg.innerText = "Could not connect to server.";
+            }
+        });
+    </script>
 </body>
 </html>
