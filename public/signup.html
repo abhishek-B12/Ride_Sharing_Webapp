@@ -2,62 +2,125 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Signup - Ride Live</title>
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        .checkbox-container { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; }
+        /* Disabled button style */
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        
+        /* Modal Background */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; z-index: 1000; left: 0; top: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.5); /* Black w/ opacity */
+        }
+        /* Modal Box */
+        .modal-content {
+            background-color: #fefefe;
+            margin: 10% auto; padding: 0;
+            border: 1px solid #888;
+            width: 90%; max-width: 500px;
+            border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            animation: fadeIn 0.3s;
+        }
+        .modal-header, .modal-footer { padding: 15px; border-bottom: 1px solid #eee; }
+        .modal-footer { border-top: 1px solid #eee; border-bottom: none; }
+        .modal-body { padding: 15px; max-height: 300px; overflow-y: auto; }
+        .close { float: right; font-size: 28px; font-weight: bold; cursor: pointer; color: #aaa; }
+        .close:hover { color: #000; }
+        @keyframes fadeIn { from {opacity: 0; transform: translateY(-10px);} to {opacity: 1; transform: translateY(0);} }
+    </style>
 </head>
 <body>
     <div class="container">
-        <h2>Create Account</h2>
+        <h2>Create Passenger Account</h2>
         <form id="signupForm">
-            <div class="form-group">
-                <label>Full Name</label>
-                <input type="text" id="fullName" placeholder="John Doe">
-                <small>Letters only</small>
+            <label>Full Name</label><input type="text" id="fullName" required>
+            <label>Username</label><input type="text" id="username" required>
+            <label>Phone</label><input type="text" id="phone" required>
+            <label>Email (Optional)</label><input type="email" id="email">
+            <label>DOB</label><input type="date" id="dobAD" required>
+            <label>Password</label><input type="password" id="password" required>
+
+            <div class="checkbox-container">
+                <input type="checkbox" id="tcCheckbox" required>
+                <label for="tcCheckbox" style="margin:0; font-weight:normal;">
+                    I agree to the <a href="#" id="openTcBtn" style="color:#007bff;">Terms and Conditions</a>
+                </label>
             </div>
 
-            <div class="form-group">
-                <label>Username</label>
-                <input type="text" id="username" placeholder="john_doe">
-                <small>No numbers allowed</small>
-            </div>
-
-            <div class="form-group">
-                <label>Phone Number</label>
-                <input type="text" id="phone" placeholder="98XXXXXXXX">
-            </div>
-
-            <div class="form-group">
-                <label>Email (Optional)</label>
-                <input type="email" id="email" placeholder="example@gmail.com">
-            </div>
-
-            <div class="form-group">
-                <label>Date of Birth</label>
-                <input type="date" id="dobAD">
-                <small>Must be 16+</small>
-            </div>
-
-            <div class="form-group">
-                <label>Password</label>
-                <input type="password" id="password">
-                <small>8+ chars, Upper, Lower, #, Symbol</small>
-            </div>
-
-            <button type="submit">Register</button>
+            <button type="submit" id="submitBtn" disabled>Register</button>
         </form>
+        
         <p id="msg" class="message"></p>
-        <p>Already have an account? <a href="login.html">Login here</a></p>
+        <p>Has account? <a href="login.html">Login</a></p>
+    </div>
+
+    <div id="tcModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Ride Live - Passenger Terms</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <ol>
+                    <li><strong>Accuracy:</strong> You agree to provide true and accurate personal information.</li>
+                    <li><strong>Payment:</strong> You are liable to pay the full fare shown upon ride completion.</li>
+                    <li><strong>Safety:</strong> You will not carry dangerous, illegal, or hazardous items during a ride.</li>
+                    <li><strong>Conduct:</strong> You agree to treat drivers with respect. Zero tolerance for harassment.</li>
+                    <li><strong>Cancellations:</strong> Frequent cancellations may result in account suspension.</li>
+                    <li><strong>Liability:</strong> Ride Live is a platform; we are not liable for lost items.</li>
+                </ol>
+            </div>
+            <div class="modal-footer">
+                <button id="acceptTcBtn" style="background:#28a745; width:100%;">I Accept These Terms</button>
+            </div>
+        </div>
     </div>
 
     <script>
+        // Modal Elements
+        const modal = document.getElementById("tcModal");
+        const openBtn = document.getElementById("openTcBtn");
+        const closeSpan = document.getElementsByClassName("close")[0];
+        const acceptBtn = document.getElementById("acceptTcBtn");
+        const checkbox = document.getElementById("tcCheckbox");
+        const submitBtn = document.getElementById("submitBtn");
+
+        // Open Modal
+        openBtn.onclick = (e) => { e.preventDefault(); modal.style.display = "block"; };
+
+        // Close Modal (X)
+        closeSpan.onclick = () => modal.style.display = "none";
+
+        // Click "I Accept" inside Modal
+        acceptBtn.onclick = () => {
+            checkbox.checked = true;
+            submitBtn.disabled = false;
+            modal.style.display = "none";
+        };
+
+        // Manual Checkbox Click
+        checkbox.addEventListener('change', function() {
+            submitBtn.disabled = !this.checked;
+        });
+
+        // Close if clicking outside box
+        window.onclick = (e) => { if (e.target == modal) modal.style.display = "none"; };
+
         document.getElementById('signupForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const msg = document.getElementById('msg');
-            msg.className = 'message';
-            msg.innerText = 'Processing...';
 
-            const formData = {
+            // Double check (Security)
+            if (!checkbox.checked) {
+                alert("Declined: You must accept the Terms and Conditions to use our platform.");
+                window.location.reload(); // "Redirect" (Refresh) to reset as requested
+                return;
+            }
+
+            const data = {
                 fullName: document.getElementById('fullName').value,
                 username: document.getElementById('username').value,
                 phone: document.getElementById('phone').value,
@@ -66,27 +129,14 @@
                 password: document.getElementById('password').value
             };
 
-            try {
-                // Ensure this URL matches your backend port
-                const res = await fetch('http://localhost:3000/api/signup', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(formData)
-                });
-
-                const data = await res.json();
-                
-                if (res.ok) {
-                    msg.classList.add('success');
-                    msg.innerText = data.message;
-                    setTimeout(() => window.location.href = 'login.html', 2000);
-                } else {
-                    msg.classList.add('error');
-                    msg.innerText = data.error;
-                }
-            } catch (err) {
-                msg.classList.add('error');
-                msg.innerText = "Could not connect to server.";
+            const res = await fetch('/api/signup', { method:'POST', body: JSON.stringify(data) });
+            const json = await res.json();
+            
+            if(res.ok) {
+                alert("Account Created! Please Login.");
+                window.location.href = 'login.html';
+            } else {
+                document.getElementById('msg').innerText = json.error || json.message;
             }
         });
     </script>

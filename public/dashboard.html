@@ -2,172 +2,388 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard - Ride_Sharing_Live</title>
+    <title>Dashboard - Ride Live</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        #map { height: 70vh; width: 100%; border-radius: 12px; margin-top: 20px; }
-        .user-info { display: flex; justify-content: space-between; align-items: center; }
+        #map { height: 60vh; width: 100%; border-radius: 12px; margin-top: 10px; }
+        .nav-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;}
+        .driver-panel { background: #f8f9fa; padding: 15px; border-left: 5px solid #28a745; margin-top: 10px;}
+        .fare-box {
+            background: white; padding: 15px; border-radius: 8px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center;
+            margin-top: 10px; display: none; /* Hidden until destination selected */
+        }
+        .destination-btn { background: #ffc107; color: #000; }
     </style>
 </head>
 <body>
     <div class="container container-wide">
-        <div class="user-info">
-            <h2><span id="userName">User</span>'s Dashboard</h2>
-            <div>
-                <label style="margin-right: 15px;">
-                    <input type="checkbox" id="driverToggle" onchange="toggleDriverMode()"> 
-                    Driver Mode
-                </label>
-                <button onclick="logout()" style="background: #dc3545;">Logout</button>
-            </div>
-        </div>
-        
+        <div class="nav-bar">
+            <h2>Hello, <span id="userName">User</span>!</h2>
+            <div id="driverActionArea"></div> </div>
+
         <p id="status" style="font-weight: bold; color: #555;">Mode: Passenger</p>
         
         <div id="map"></div>
-        
+
         <div id="passengerControls" style="margin-top: 20px;">
-            <button id="requestRide" style="background: #28a745;">Request a Ride</button>
+            <div style="margin-bottom: 15px;">
+                <label>Search Destination:</label>
+                <div style="display:flex; gap:5px;">
+                    <input type="text" id="addressSearch" placeholder="Type destination (e.g. Thamel)">
+                    <button onclick="searchAddress()" style="width: auto; margin-top:0;">Search</button>
+                </div>
+                <div id="searchResults" style="background:white; border:1px solid #ddd; max-height:150px; overflow-y:auto;"></div>
+            </div>
+
+            <div id="fareDisplay" class="fare-box">
+                <h3>Est. Fare: NPR <span id="fareAmount">0</span></h3>
+                <button id="confirmRideBtn" style="background: #28a745;">Confirm Request</button>
+            </div>
+
+            <button id="cancelBtn" onclick="cancelRide()" style="background:#dc3545; display:none; margin-top:10px;">Cancel My Request</button>
+            <button onclick="logout()" style="background: #dc3545; width: auto; float: right;">Logout</button>
         </div>
 
         <div id="driverControls" style="margin-top: 20px; display: none;">
             <h3>Incoming Requests</h3>
-            <div id="requestList" style="border: 1px solid #ddd; padding: 10px; min-height: 50px;">
-                <p>No active requests...</p>
-            </div>
+            <div id="requestList" class="driver-panel"><p>Waiting for requests...</p></div>
+            <button onclick="logout()" style="background: #dc3545; margin-top: 10px;">Logout</button>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // --- 1. SETUP ---
         const user = JSON.parse(localStorage.getItem('user'));
         if (!user) window.location.href = 'login.html';
         document.getElementById('userName').innerText = user.name;
 
+        let pickupMarker, dropoffMarker, driverMarker;
+        let pickupLat, pickupLng, dropLat, dropLng;
         let isDriverMode = false;
+        let activeRideId = null;
         let currentLat, currentLng;
-        let userMarker;
-        let rideMarkers = {}; // To track passenger locations on driver map
 
-        // Initialize Map
+        // --- MAP SETUP ---
         const map = L.map('map').setView([27.7172, 85.3240], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-        // --- 2. LOCATION ---
+        // 1. Get User Location (Pickup)
         if (navigator.geolocation) {
-            navigator.geolocation.watchPosition((position) => {
-                currentLat = position.coords.latitude;
-                currentLng = position.coords.longitude;
+            navigator.geolocation.getCurrentPosition(pos => {
+                pickupLat = pos.coords.latitude;
+                pickupLng = pos.coords.longitude;
                 
-                if (!userMarker) {
-                    userMarker = L.marker([currentLat, currentLng]).addTo(map)
-                        .bindPopup("You").openPopup();
-                    map.setView([currentLat, currentLng], 15);
-                } else {
-                    userMarker.setLatLng([currentLat, currentLng]);
-                }
+                // Blue Icon for Pickup
+                pickupMarker = L.marker([pickupLat, pickupLng]).addTo(map)
+                    .bindPopup("Pickup Location").openPopup();
+                map.setView([pickupLat, pickupLng], 14);
             });
         }
 
-        // --- 3. WEBSOCKET (REAL-TIME) ---
-        const socket = new WebSocket(`ws://${window.location.host}`);
+        // 2. Click Map to set Destination
+        map.on('click', function(e) {
+            if (isDriverMode) return; // Drivers can't set destinations
 
-        socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            console.log("WebSocket received:", data); // DEBUGGING LINE
+            dropLat = e.latlng.lat;
+            dropLng = e.latlng.lng;
 
-            // CASE A: New Ride Request (For Drivers)
-            if (data.type === 'NEW_RIDE_REQUEST' && isDriverMode) {
-                addRequestToList(data);
-                const pMarker = L.marker([data.lat, data.lng]).addTo(map)
-                    .bindPopup(`Passenger Waiting (Ride #${data.rideId})`).openPopup();
-                rideMarkers[data.rideId] = pMarker;
-            }
-
-            // CASE B: Ride Accepted (For Passengers)
-            // We use '==' to handle string vs number issues (e.g. "5" vs 5)
-            if (data.type === 'RIDE_ACCEPTED' && data.passengerId == user.id) {
-                console.log("Matched Passenger ID! Updating UI..."); // DEBUGGING LINE
-                document.getElementById('status').innerText = "Driver is coming!";
-                document.getElementById('status').style.color = "green";
-                document.getElementById('status').style.fontSize = "1.2rem"; // Make it big
-                alert("Your ride has been accepted!");
-            }
-        };
-
-        // --- 4. TOGGLE MODE ---
-        function toggleDriverMode() {
-            isDriverMode = document.getElementById('driverToggle').checked;
-            const pControls = document.getElementById('passengerControls');
-            const dControls = document.getElementById('driverControls');
-            const status = document.getElementById('status');
-
-            if (isDriverMode) {
-                pControls.style.display = 'none';
-                dControls.style.display = 'block';
-                status.innerText = "Mode: Driver (Waiting for requests...)";
-                status.style.color = "blue";
+            // If marker exists, move it. If not, create it.
+            if (dropoffMarker) {
+                dropoffMarker.setLatLng(e.latlng);
             } else {
-                pControls.style.display = 'block';
-                dControls.style.display = 'none';
-                status.innerText = "Mode: Passenger";
-                status.style.color = "#555";
+                // Red Icon for Dropoff (Simple custom icon logic or default)
+                dropoffMarker = L.marker([dropLat, dropLng]).addTo(map)
+                    .bindPopup("Destination").openPopup();
+            }
+
+            // Calculate rough fare locally just for display (Server will be final authority)
+            calculateTempFare();
+        });
+
+        // Helper: Local Fare Estimate (Visual only)
+        function calculateTempFare() {
+            // Simple Haversine in JS for preview
+            const R = 6371; 
+            const dLat = (dropLat - pickupLat) * Math.PI / 180;
+            const dLon = (dropLng - pickupLng) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(pickupLat * Math.PI / 180) * Math.cos(dropLat * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+            const dist = (R * c) * 1.5; // 1.5 road factor
+            
+            let fare = Math.round(50 + (dist * 40));
+            if(fare < 100) fare = 100;
+
+            document.getElementById('fareAmount').innerText = fare;
+            document.getElementById('distAmount').innerText = dist.toFixed(1);
+            document.getElementById('fareDisplay').style.display = 'block';
+        }
+
+        // --- FEATURE 1: SEARCH ADDRESS ---
+        async function searchAddress() {
+            const q = document.getElementById('addressSearch').value;
+            if (!q) return;
+
+            try {
+                const res = await fetch(`/api/search-address?q=${q}`);
+                const data = await res.json();
+                
+                console.log("Search Results:", data); // DEBUGGING LINE
+
+                const resultsDiv = document.getElementById('searchResults');
+                if (data.length === 0) {
+                    resultsDiv.innerHTML = "<div style='padding:8px;'>No locations found.</div>";
+                    return;
+                }
+
+                resultsDiv.innerHTML = data.map(item => `
+                    <div onclick="setDestination('${item.lat}', '${item.lon}', '${item.display_name.replace(/'/g, "\\'")}')" 
+                         style="padding:8px; cursor:pointer; border-bottom:1px solid #eee; background: white;"
+                         onmouseover="this.style.background='#f0f0f0'"
+                         onmouseout="this.style.background='white'">
+                        ${item.display_name}
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error("Search failed:", err);
             }
         }
 
-        // --- 5. PASSENGER LOGIC ---
-        document.getElementById('requestRide').addEventListener('click', async () => {
-            if (!currentLat) return alert("Locating you...");
+        function setDestination(lat, lon, name) {
+            // Convert strings to numbers
+            const latNum = parseFloat(lat);
+            const lonNum = parseFloat(lon);
+
+            dropLat = latNum;
+            dropLng = lonNum;
+
+            // Clear search results and update input text
+            document.getElementById('searchResults').innerHTML = "";
+            document.getElementById('addressSearch').value = name;
             
+            // Update or create the marker
+            if (dropoffMarker) {
+                dropoffMarker.setLatLng([latNum, lonNum]);
+            } else {
+                dropoffMarker = L.marker([latNum, lonNum]).addTo(map).bindPopup("Destination");
+            }
+            
+            // Fly the map to the location
+            map.flyTo([latNum, lonNum], 15);
+            
+            // Trigger fare calculation
+            calculateTempFare();
+        }
+
+        // 3. Confirm Request
+        document.getElementById('confirmRideBtn').addEventListener('click', async () => {
+            if(!pickupLat || !dropLat) return alert("Please select a destination");
+
+            const btn = document.getElementById('confirmRideBtn');
+            btn.disabled = true;
+            btn.innerText = "Requesting...";
+
             const res = await fetch('/api/request-ride', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ passengerId: user.id, lat: currentLat, lng: currentLng })
+                body: JSON.stringify({
+                    passengerId: user.id,
+                    pickupLat, pickupLng,
+                    dropLat, dropLng
+                })
             });
 
+            const data = await res.json();
             if(res.ok) {
-                document.getElementById('status').innerText = "Searching for drivers...";
+                activeRideId = data.rideId;
+                document.getElementById('status').innerText = `Searching Driver... (Fare: NPR ${data.fare})`;
                 document.getElementById('status').style.color = "orange";
+                document.getElementById('fareDisplay').style.display = 'none'; // Hide the box
+                document.getElementById('cancelBtn').style.display = 'block'; // Show cancel button
             }
         });
 
-        // --- 6. DRIVER LOGIC (Display Request) ---
-        function addRequestToList(data) {
-            const list = document.getElementById('requestList');
-            // Clear "No requests" text if it exists
-            if(list.innerText.includes("No active requests")) list.innerHTML = "";
+        // --- FEATURE 2: LIVE TRACKING (Broadcasting Location) ---
+        navigator.geolocation.watchPosition(pos => {
+            currentLat = pos.coords.latitude;
+            currentLng = pos.coords.longitude;
+            
+            // If user is a DRIVER and has an active ride, broadcast location to passenger
+            if (isDriverMode && activeRideId) {
+                socket.send(JSON.stringify({
+                    type: 'DRIVER_LOCATION_UPDATE',
+                    rideId: activeRideId,
+                    lat: currentLat,
+                    lng: currentLng
+                }));
+            }
+        });
 
-            const item = document.createElement('div');
-            item.className = 'ride-item';
-            item.style = "background: #f8f9fa; padding: 10px; margin-bottom: 5px; border-left: 4px solid #007bff;";
-            item.innerHTML = `
-                <strong>Ride #${data.rideId}</strong><br>
-                Location: ${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}<br>
-                <button onclick="acceptRide(${data.rideId}, ${data.passengerId})" style="margin-top:5px; padding:5px 10px; font-size:0.9rem;">Accept Ride</button>
-            `;
-            list.appendChild(item);
+        // --- 2. DRIVER STATUS LOGIC ---
+        function checkDriverStatus() {
+            const area = document.getElementById('driverActionArea');
+            if (user.role === 'driver') {
+                area.innerHTML = `<label><input type="checkbox" id="driverToggle" onchange="toggleDriverMode()"> Go Online (Driver)</label>`;
+            } else {
+                area.innerHTML = `<button onclick="window.location.href='driver_register.html'" style="background: #6610f2; padding: 8px 15px;">Become a Driver</button>`;
+            }
+        }
+        checkDriverStatus();
+
+        function toggleDriverMode() {
+            isDriverMode = document.getElementById('driverToggle').checked;
+            document.getElementById('passengerControls').style.display = isDriverMode ? 'none' : 'block';
+            document.getElementById('driverControls').style.display = isDriverMode ? 'block' : 'none';
+            document.getElementById('status').innerText = isDriverMode ? "Mode: Driver (Online)" : "Mode: Passenger";
         }
 
-        async function acceptRide(rideId, passengerId) {
-            const res = await fetch('/api/accept-ride', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ rideId, driverId: user.id, passengerId })
-            });
+        // --- 3. WEBSOCKETS ---
+        const socket = new WebSocket(`ws://${window.location.host}`);
+        
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
             
-            if(res.ok) {
-                alert("Ride Accepted! Go pick them up.");
-                // Remove marker and list item (simplified)
-                document.getElementById('requestList').innerHTML = "No active requests...";
-                if(rideMarkers[rideId]) map.removeLayer(rideMarkers[rideId]);
+            // Driver receives request
+            if(data.type === 'NEW_RIDE_REQUEST' && isDriverMode) {
+                const list = document.getElementById('requestList');
+                const cardId = `request-${data.rideId}`;
+                
+                list.innerHTML += `
+                    <div class="app-card" id="${cardId}" style="border-left: 5px solid #ffc107;">
+                        <h4>New Request: NPR ${data.fare}</h4>
+                        <p>Dist: ${data.dist} km</p>
+                        <div style="display:flex; gap:10px;">
+                            <button onclick="acceptRide(${data.rideId}, ${data.passengerId})" style="background:#28a745;">Accept</button>
+                            <button onclick="declineRide('${cardId}')" style="background:#6c757d;">Decline</button>
+                        </div>
+                    </div>`;
+            }
+
+            // Passenger receives acceptance (Loose equality == for ID safety)
+            if(data.type === 'RIDE_ACCEPTED' && data.passengerId == user.id) {
+                activeRideId = data.rideId;
+                const status = document.getElementById('status');
+                status.innerText = "DRIVER IS COMING!";
+                status.style.color = "green"; 
+                status.style.fontSize = "1.5rem";
+                alert("A driver has accepted your ride!");
+            }
+
+            // Live Tracking: Update Driver Marker on Passenger Map
+            if (data.type === 'DRIVER_LOCATION_UPDATE' && !isDriverMode && data.rideId === activeRideId) {
+                const carIcon = L.icon({
+                    iconUrl: 'https://cdn-icons-png.flaticon.com/512/854/854838.png',
+                    iconSize: [35, 35],
+                    iconAnchor: [17, 17]
+                });
+
+                if (!driverMarker) {
+                    driverMarker = L.marker([data.lat, data.lng], { icon: carIcon }).addTo(map).bindPopup("Driver is on the way!");
+                } else {
+                    driverMarker.setLatLng([data.lat, data.lng]);
+                }
+            }
+
+            // Handle Cancellations/Completions
+            if (data.type === 'STATUS_UPDATE') {
+                if (data.status === 'cancelled') {
+                    alert("The other party cancelled the ride.");
+                    location.reload();
+                } else if (data.status === 'completed') {
+                    alert("Ride Finished! Thank you for riding with us.");
+                    // You could redirect to a 'receipt.html' here later
+                    location.reload();
+                }
+            }
+        };
+
+        // --- 4. ACTIONS ---
+        // 1. ACCEPT RIDE
+        async function acceptRide(rideId, passengerId) {
+            // SUITABILITY: Prevents "fat finger" accidental clicks on the wrong card.
+            if(confirm("Confirm Acceptance?\n\nYou are committing to pick up this passenger.")) {
+                activeRideId = rideId;
+                await fetch('/api/accept-ride', {
+                    method: 'POST',
+                    body: JSON.stringify({ rideId, driverId: user.id, passengerId })
+                });
+                
+                // UI Update
+                const list = document.getElementById('requestList');
+                list.innerHTML = `
+                    <div class="app-card" style="border-left: 5px solid #28a745; background: #f0fff0;">
+                        <h3>Active Ride: #${rideId}</h3>
+                        <p>Heading to destination...</p>
+                        <button onclick="finishRide()" style="background:#28a745;">Finish Ride & Collect Cash</button>
+                    </div>
+                `;
             }
         }
 
+        // 2. DECLINE RIDE (New Function)
+        function declineRide(cardId) {
+            // SUITABILITY: Quick check so they don't lose a potential ride by mistake.
+            if(confirm("Dismiss this request?")) {
+                const el = document.getElementById(cardId);
+                if(el) el.remove();
+            }
+        }
+
+        // 3. FINISH RIDE
+        async function finishRide() {
+            // SUITABILITY: The most important check! Ensures they actually got the cash.
+            if(confirm("💰 Have you reached the destination and collected the CASH payment?")) {
+                await fetch('/api/update-ride-status', {
+                    method: 'POST',
+                    body: JSON.stringify({ rideId: activeRideId, status: 'completed', userId: user.id })
+                });
+                // The socket.onmessage will handle the alert("Ride Finished") for both parties
+            }
+        }
+
+        // Cancel/Complete Ride Logic
+        async function updateStatus(status) {
+            await fetch('/api/update-ride-status', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ rideId: activeRideId, status: status, userId: user.id })
+            });
+        }
+
+        async function cancelRide() {
+            if(!activeRideId) return;
+            
+            // SUITABILITY: Critical action check.
+            if(confirm("⚠️ Are you sure you want to CANCEL this ride?\n\nThis will remove your request from all drivers.")) {
+                const res = await fetch('/api/update-ride-status', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ 
+                        rideId: activeRideId, 
+                        status: 'cancelled', 
+                        userId: user.id 
+                    })
+                });
+
+                if(res.ok) {
+                    alert("Ride request has been cancelled."); // Informative feedback
+                    location.reload(); // Refresh to reset the map and state
+                }
+            }
+        }
+
+        document.getElementById('cancelBtn')?.addEventListener('click', cancelRide);
+
+        // Global Actions (Logout)
+        // Prevent users from accidentally logging out.
         function logout() {
-            localStorage.clear();
-            window.location.href = 'login.html';
+            // SUITABILITY: confirm() is perfect here to prevent accidental clicks.
+            if (confirm("Are you sure you want to log out?")) {
+                localStorage.clear();
+                window.location.href = 'login.html';
+            }
         }
     </script>
 </body>

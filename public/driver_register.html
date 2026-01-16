@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Become a Driver</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .container { max-width: 800px; margin: 30px auto; }
+        fieldset { border: 1px solid #ccc; padding: 20px; margin-bottom: 20px; border-radius: 8px; background: #fff;}
+        legend { font-weight: bold; color: #007bff; background: #fff; padding: 0 10px; }
+        .row { display: flex; gap: 20px; flex-wrap: wrap; }
+        .col { flex: 1; min-width: 250px; }
+        label { margin-top: 10px; display: block; font-weight: 500; }
+        input, select { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;}
+        /* Disabled button style */
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        
+        /* Modal Background */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; z-index: 1000; left: 0; top: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.5); /* Black w/ opacity */
+        }
+        /* Modal Box */
+        .modal-content {
+            background-color: #fefefe;
+            margin: 10% auto; padding: 0;
+            border: 1px solid #888;
+            width: 90%; max-width: 500px;
+            border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            animation: fadeIn 0.3s;
+        }
+        .modal-header, .modal-footer { padding: 15px; border-bottom: 1px solid #eee; }
+        .modal-footer { border-top: 1px solid #eee; border-bottom: none; }
+        .modal-body { padding: 15px; max-height: 300px; overflow-y: auto; }
+        .close { float: right; font-size: 28px; font-weight: bold; cursor: pointer; color: #aaa; }
+        .close:hover { color: #000; }
+        @keyframes fadeIn { from {opacity: 0; transform: translateY(-10px);} to {opacity: 1; transform: translateY(0);} }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Driver Application Form</h2>
+        <form id="driverForm" enctype="multipart/form-data">
+            
+            <fieldset>
+                <legend>1. Personal Details</legend>
+                <div class="row">
+                    <div class="col"><label>First Name</label><input type="text" name="first_name" required></div>
+                    <div class="col"><label>Last Name</label><input type="text" name="last_name" required></div>
+                </div>
+                <label>Date of Birth (AD)</label><input type="date" name="dob" required>
+                <label>Face Photo (Front View)</label><input type="file" name="photo_face" accept="image/*" required>
+            </fieldset>
+
+            <fieldset>
+                <legend>2. Citizenship & PAN</legend>
+                <div class="row">
+                    <div class="col"><label>Citizenship No (e.g., 12-34-56)</label><input type="text" name="citizenship_no" pattern="[0-9\-]+" title="Numbers and hyphens only" required></div>
+                    <div class="col"><label>Issue Date</label><input type="date" name="citizenship_issue_date" required></div>
+                </div>
+                <div class="row">
+                    <div class="col"><label>Front Photo</label><input type="file" name="citizenship_front" accept="image/*" required></div>
+                    <div class="col"><label>Back Photo</label><input type="file" name="citizenship_back" accept="image/*" required></div>
+                </div>
+                <label>PAN Number (9 Digits)</label><input type="text" name="pan_no" pattern="\d{9}" title="Must be exactly 9 digits" required>
+            </fieldset>
+
+            <fieldset>
+                <legend>3. Vehicle Details</legend>
+                <label>Vehicle Type</label>
+                <select name="vehicle_type">
+                    <option value="two_wheeler">Two Wheeler</option>
+                    <option value="three_wheeler">Three Wheeler</option>
+                    <option value="four_wheeler">Four Wheeler</option>
+                </select>
+                <div class="row">
+                    <div class="col"><label>Brand</label><input type="text" name="vehicle_brand" required></div>
+                    <div class="col"><label>Model</label><input type="text" name="vehicle_model" required></div>
+                </div>
+                <div class="row">
+                    <div class="col"><label>Color</label><input type="text" name="vehicle_color" required></div>
+                    <div class="col"><label>Year</label><input type="number" name="vehicle_year" min="1990" max="2026" required></div>
+                </div>
+                <label>Plate No (e.g. BA 2 PA 1234)</label><input type="text" name="plate_no" style="text-transform: uppercase;" required>
+                <label>Full Vehicle Photo</label><input type="file" name="vehicle_photo" accept="image/*" required>
+            </fieldset>
+
+            <fieldset>
+                <legend>4. License</legend>
+                <label>License No</label><input type="text" name="license_no" required>
+                <label>Expiry Date</label><input type="date" name="license_expiry" required>
+                <label>License Photo</label><input type="file" name="license_photo" accept="image/*" required>
+            </fieldset>
+
+            <fieldset>
+                <legend>5. Billbook</legend>
+                <label>First 5 Pages (Select multiple)</label><input type="file" name="billbook_pages" accept="image/*" multiple required>
+                <label>Registration Page</label><input type="file" name="billbook_reg_page" accept="image/*" required>
+                <label>Renew Date</label><input type="date" name="billbook_renew_date" required>
+                <label>Renew Page Photo</label><input type="file" name="billbook_renew_page" accept="image/*" required>
+            </fieldset>
+
+            <fieldset style="border-color: #dc3545;">
+                <legend style="color: #dc3545;">6. Driver Terms of Service</legend>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="driverTcCheckbox" required>
+                    <label for="driverTcCheckbox" style="margin:0; color: #dc3545; font-weight: bold;">
+                        I accept the <a href="#" id="openDriverTc" style="color:#dc3545; text-decoration:underline;">Driver Partner Agreement</a>
+                    </label>
+                </div>
+            </fieldset>
+
+            <button type="submit" id="submitBtn" disabled style="opacity: 0.5;">Submit Application</button>
+        </form>
+        <p id="msg" class="message"></p>
+    </div>
+
+    <div id="driverTcModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 style="color:#dc3545;">Driver Partner Agreement</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <ol>
+                    <li><strong>Document Authenticity:</strong> Using fake documents is a criminal offense.</li>
+                    <li><strong>Vehicle Condition:</strong> Must meet safety standards.</li>
+                    <li><strong>Zero Tolerance:</strong> No alcohol/drugs. Permanent ban for harassment.</li>
+                    <li><strong>Commission:</strong> 15% platform fee on rides.</li>
+                    <li><strong>Traffic Rules:</strong> You are responsible for all fines.</li>
+                    <li><strong>Professionalism:</strong> No cancellations without valid reason.</li>
+                </ol>
+            </div>
+            <div class="modal-footer">
+                <button id="driverAcceptBtn" style="background:#dc3545; width:100%; color:white;">I Accept & Understand</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Driver Modal Logic
+        const dModal = document.getElementById("driverTcModal");
+        const dOpen = document.getElementById("openDriverTc");
+        const dClose = dModal.querySelector(".close");
+        const dAccept = document.getElementById("driverAcceptBtn");
+        const dCheck = document.getElementById("driverTcCheckbox");
+        const dSubmit = document.getElementById("submitBtn");
+
+        dOpen.onclick = (e) => { e.preventDefault(); dModal.style.display = "block"; };
+        dClose.onclick = () => dModal.style.display = "none";
+
+        dAccept.onclick = () => {
+            dCheck.checked = true;
+            dSubmit.disabled = false;
+            dSubmit.style.opacity = "1"; // Visual feedback enabled
+            dModal.style.display = "none";
+        };
+
+        dCheck.addEventListener('change', function() {
+            dSubmit.disabled = !this.checked;
+            dSubmit.style.opacity = this.checked ? "1" : "0.5";
+        });
+
+        window.onclick = (e) => { if (e.target == dModal) dModal.style.display = "none"; };
+
+        const user = JSON.parse(localStorage.getItem('user'));
+        if (!user) window.location.href = 'login.html';
+
+        document.getElementById('driverForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // Double Check
+            if(!dCheck.checked) {
+                alert("You cannot proceed without accepting the Driver Terms.");
+                return;
+            }
+
+            const msg = document.getElementById('msg');
+            msg.innerText = "Uploading... Please wait.";
+            
+            const formData = new FormData(e.target);
+            formData.append('user_id', user.id);
+
+            try {
+                const res = await fetch('/api/apply-driver', { method: 'POST', body: formData });
+                if(res.ok) {
+                    alert("Application Submitted! Admin will verify.");
+                    window.location.href = 'dashboard.html';
+                } else {
+                    const data = await res.json();
+                    msg.innerText = "Error: " + data.error;
+                    msg.className = "error";
+                }
+            } catch (err) { msg.innerText = "Upload Failed"; }
+        });
+    </script>
+</body>
+</html>

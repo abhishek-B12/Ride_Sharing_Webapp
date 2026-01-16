@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Panel - Ride Live</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .container-wide { max-width: 1200px; margin: 20px auto; }
+        .app-card { background: white; border: 1px solid #ddd; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .app-header { display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }
+        .grid-docs { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; }
+        .doc-item { border: 1px solid #eee; padding: 10px; text-align: center; border-radius: 4px; }
+        .doc-item img { max-width: 100%; height: 100px; object-fit: cover; border: 1px solid #ccc; margin-bottom: 5px; }
+        .btn-group { margin-top: 20px; text-align: right; }
+        .approve { background: #28a745; color: white; padding: 10px 20px; text-decoration: none; border: none; border-radius: 4px; cursor: pointer; }
+        .reject { background: #dc3545; color: white; padding: 10px 20px; margin-left: 10px; border: none; border-radius: 4px; cursor: pointer; }
+        h4 { margin: 5px 0; color: #555; }
+    </style>
+</head>
+<body>
+    <div class="container container-wide">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2>Admin Dashboard</h2>
+            <button onclick="logout()" style="width: auto; background: #6c757d;">Logout</button>
+        </div>
+        <p>Reviewing pending driver applications.</p>
+        
+        <div id="applicationsList">
+            <p>Loading applications...</p>
+        </div>
+    </div>
+
+    <script>
+        const user = JSON.parse(localStorage.getItem('user'));
+        
+        // 1. Security Check
+        if (!user || user.role !== 'admin') {
+            alert("Access Denied: Admins only.");
+            window.location.href = 'login.html';
+        }
+
+        // 2. Load Data
+        async function loadApplications() {
+            const res = await fetch('/api/admin/applications');
+            const apps = await res.json();
+            
+            const list = document.getElementById('applicationsList');
+            list.innerHTML = "";
+
+            if(apps.length === 0) {
+                list.innerHTML = "<p>No pending applications.</p>";
+                return;
+            }
+
+            apps.forEach(app => {
+                // Helper to create a view link for files
+                const fileLink = (filename, label) => {
+                    if(!filename) return `<span style="color:red">Missing</span>`;
+                    // Handle comma-separated files (like billbook pages)
+                    if(filename.includes(',')) {
+                        return filename.split(',').map((f, i) => 
+                            `<div class="doc-item">
+                                <a href="/uploads/${f}" target="_blank"><img src="/uploads/${f}"></a>
+                                <br><small>${label} ${i+1}</small>
+                             </div>`
+                        ).join('');
+                    }
+                    return `
+                        <div class="doc-item">
+                            <a href="/uploads/${filename}" target="_blank"><img src="/uploads/${filename}"></a>
+                            <br><small>${label}</small>
+                        </div>`;
+                };
+
+                const html = `
+                <div class="app-card" id="card-${app.application_id}">
+                    <div class="app-header">
+                        <h3>Applicant: ${app.first_name} ${app.last_name}</h3>
+                        <span>Submitted: ${new Date(app.submission_date).toLocaleDateString()}</span>
+                    </div>
+
+                    <div style="display:flex; gap: 20px; margin-bottom: 15px;">
+                        <div>
+                            <h4>Personal Info</h4>
+                            <p><strong>Citizenship No:</strong> ${app.citizenship_no}</p>
+                            <p><strong>DOB:</strong> ${formatDate(app.dob)}</p>
+                            <p><strong>PAN:</strong> ${app.pan_no}</p>
+                        </div>
+                        <div>
+                            <h4>Vehicle Info</h4>
+                            <p><strong>Plate:</strong> ${app.plate_no}</p>
+                            <p><strong>Model:</strong> ${app.vehicle_brand} ${app.vehicle_model} (${app.vehicle_year})</p>
+                            <p><strong>Type:</strong> ${app.vehicle_type}</p>
+                        </div>
+                         <div>
+                            <h4>License Info</h4>
+                            <p><strong>No:</strong> ${app.license_no}</p>
+                            <p><strong>Expiry:</strong> ${app.license_expiry}</p>
+                        </div>
+                    </div>
+
+                    <h4>Documents (Click to View Full Size)</h4>
+                    <div class="grid-docs">
+                        ${fileLink(app.photo_face, "Face Photo")}
+                        ${fileLink(app.citizenship_front, "Citizenship Front")}
+                        ${fileLink(app.citizenship_back, "Citizenship Back")}
+                        ${fileLink(app.license_photo, "License")}
+                        ${fileLink(app.vehicle_photo, "Vehicle Photo")}
+                        ${fileLink(app.billbook_reg_page, "Billbook Reg")}
+                        ${fileLink(app.billbook_renew_page, "Billbook Renew")}
+                        ${fileLink(app.billbook_pages, "Billbook Pages")}
+                    </div>
+
+                    <div class="btn-group">
+                        <button class="approve" onclick="verifyApp(${app.application_id}, ${app.user_id}, 'approved')">Approve & Promote User</button>
+                        <button class="reject" onclick="verifyApp(${app.application_id}, ${app.user_id}, 'rejected')">Reject</button>
+                    </div>
+                </div>
+                `;
+                list.innerHTML += html;
+            });
+        }
+
+        async function verifyApp(appId, userId, status) {
+            let reason = "";
+
+            if (status === 'approved') {
+                if (!confirm(`Are you sure you want to APPROVE this driver?`)) return;
+            } 
+            else if (status === 'rejected') {
+                // SUITABILITY: prompt() is excellent here to capture input without building a custom modal.
+                reason = prompt("Please type the reason for rejection:", "Documents unclear/missing");
+                
+                if (reason === null) return; // User clicked "Cancel" in the prompt
+                if (reason.trim() === "") return alert("Rejection reason is required!");
+            }
+
+            // Send the data (we are sending 'reason' now, even though server might not use it yet, it's good practice)
+            const res = await fetch('/api/admin/verify', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ applicationId: appId, userId, status, reason }) // Added reason
+            });
+
+            if(res.ok) {
+                alert(`Application marked as ${status.toUpperCase()}.`);
+                const card = document.getElementById(`card-${appId}`);
+                if(card) card.remove();
+            } else {
+                alert("Error updating status. Please try again.");
+            }
+        }
+
+        function logout() { localStorage.clear(); window.location.href = 'login.html'; }
+        
+        loadApplications(// Helper to formatting dates (YYYY-MM-DD)
+function formatDate(isoString) {
+    if (!isoString) return 'N/A';
+    // The string looks like "2006-02-08T18:15:00.000Z"
+    // We just want the part before the "T"
+    return isoString.split('T')[0];
+});
+    </script>
+</body>
+</html>
